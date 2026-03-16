@@ -642,6 +642,37 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
   }
 
   /**
+   * Force-reconnect the gateway WebSocket client.
+   * Used after the OpenClaw gateway process has been restarted (e.g. after config sync).
+   * Unlike `connectGatewayIfNeeded`, this always tears down the old client first
+   * to avoid a race where the old client's `onClose` fires after a new client is created.
+   */
+  async reconnectGateway(): Promise<void> {
+    console.log('[ChannelSync] reconnectGateway: tearing down old client and reconnecting...');
+    this.stopGatewayClient();
+    try {
+      await this.ensureGatewayClientReady();
+      console.log('[ChannelSync] reconnectGateway: gateway client ready, starting channel polling');
+      this.startChannelPolling();
+    } catch (error) {
+      console.error('[ChannelSync] reconnectGateway: failed to initialize gateway client:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Explicitly disconnect the gateway WebSocket client.
+   * Called before the OpenClaw gateway process is restarted so that the old
+   * client's async `onClose` handler cannot interfere with a subsequently
+   * created client.
+   */
+  disconnectGatewayClient(): void {
+    console.log('[ChannelSync] disconnectGatewayClient: explicitly tearing down gateway client');
+    this.stopGatewayClient();
+  }
+
+
+  /**
    * Start periodic polling for channel-originated sessions (e.g. Telegram).
    * Uses the gateway `sessions.list` RPC to discover sessions that may not
    * have been delivered via WebSocket events.
@@ -652,7 +683,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       return;
     }
     // Already running
-    if (this.channelPollingTimer) return;
+    if (this.channelPollingTimer) { console.log('[ChannelSync] startChannelPolling: already running, skipping'); return; }
 
     console.log('[ChannelSync] startChannelPolling: starting periodic channel session discovery');
     // Run once immediately, then at interval
@@ -708,7 +739,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
           }
         }
       }
-      console.log('[ChannelSync] pollChannelSessions: found', channelCount, 'channel sessions, hasNew=', hasNew);
+      console.log('[ChannelSync] pollChannelSessions: found', channelCount, 'channel sessions, hasNew=', hasNew, 'windowCount=', BrowserWindow.getAllWindows().length);
       if (hasNew) {
         let notified = 0;
         for (const win of BrowserWindow.getAllWindows()) {
@@ -1108,7 +1139,9 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
     }
 
     this.stopGatewayClient();
+    console.log('[ChannelSync] ensureGatewayClientReady: creating gateway client, url=', connection.url);
     await this.createGatewayClient(connection);
+    console.log('[ChannelSync] ensureGatewayClientReady: createGatewayClient returned, waiting for handshake...');
     if (this.gatewayReadyPromise) {
       await waitWithTimeout(this.gatewayReadyPromise, GATEWAY_READY_TIMEOUT_MS);
     }
@@ -1152,12 +1185,15 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
       role: 'operator',
       scopes: ['operator.admin'],
       onHelloOk: () => {
+        console.log('[ChannelSync] GatewayClient: onHelloOk — handshake succeeded');
         settleResolve();
       },
       onConnectError: (error: Error) => {
+        console.error('[ChannelSync] GatewayClient: onConnectError —', error.message);
         settleReject(error);
       },
       onClose: (_code: number, reason: string) => {
+        console.log('[ChannelSync] GatewayClient: onClose — code:', _code, 'reason:', reason, 'settled:', settled);
         if (!settled) {
           settleReject(new Error(reason || 'OpenClaw gateway disconnected before handshake'));
           return;
@@ -1337,7 +1373,8 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
   }
 
   private handleGatewayEvent(event: GatewayEventFrame): void {
-    console.log('[Debug:handleGatewayEvent] event:', event.event, 'seq:', event.seq);
+    const sessionKey = isRecord(event.payload) ? (event.payload as Record<string, unknown>).sessionKey : undefined;
+    console.log('[Debug:handleGatewayEvent] event:', event.event, 'seq:', event.seq, 'sessionKey:', sessionKey, 'hasChannelSync:', !!this.channelSessionSync);
     if (event.event === 'chat') {
       this.handleChatEvent(event.payload, event.seq);
       return;
@@ -2146,6 +2183,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
 
     // Try to resolve channel-originated sessions
     if (sessionKey && this.channelSessionSync) {
+      console.log('[Debug:resolveSessionId] attempting channel resolve for sessionKey:', sessionKey);
       const channelSessionId = this.channelSessionSync.resolveOrCreateSession(sessionKey)
         || this.channelSessionSync.resolveOrCreateMainAgentSession(sessionKey);
       console.log('[Debug:resolveSessionId] channel resolve — sessionKey:', sessionKey, '→', channelSessionId);

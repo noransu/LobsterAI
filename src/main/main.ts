@@ -819,6 +819,14 @@ const syncOpenClawConfig = async (
     };
   }
 
+  // Tear down the runtime adapter's WebSocket client BEFORE killing the gateway process.
+  // This prevents a race where the old client's async `onClose` fires after a new client
+  // has already been created, destroying the new connection.
+  if (openClawRuntimeAdapter) {
+    console.log('[OpenClaw] syncOpenClawConfig: pre-emptively disconnecting runtime adapter before gateway restart');
+    openClawRuntimeAdapter.disconnectGatewayClient();
+  }
+
   await manager.stopGateway();
   const restarted = await manager.startGateway();
   if (restarted.phase !== 'running') {
@@ -855,6 +863,7 @@ const bindCoworkRuntimeForwarder = (): void => {
   runtime.on('message', (sessionId: string, message: any) => {
     const safeMessage = sanitizeCoworkMessageForIpc(message);
     const windows = BrowserWindow.getAllWindows();
+    console.log('[CoworkForwarder] forwarding message: sessionId=', sessionId, 'type=', message?.type, 'windowCount=', windows.length);
     windows.forEach((win) => {
       if (win.isDestroyed()) return;
       try {
@@ -2646,6 +2655,15 @@ if (!gotTheLock) {
         reason: 'im-config-change',
         restartGatewayIfRunning: true,
       });
+      // After config sync (which may restart the gateway), ensure the runtime
+      // adapter's WebSocket client is connected so channel events are received.
+      if (openClawRuntimeAdapter) {
+        try {
+          await openClawRuntimeAdapter.connectGatewayIfNeeded();
+        } catch (connectError) {
+          console.error('[IM] Failed to connect gateway client after config sync:', connectError);
+        }
+      }
     } catch (error) {
       console.error('[IM] Debounced config sync failed:', error);
     } finally {

@@ -3,25 +3,129 @@ import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { authService } from '../services/auth';
 import { i18nService } from '../services/i18n';
+import type { CreditItem } from '../store/slices/authSlice';
+
+const getSubscriptionBadge = (label: string) => {
+  // Determine badge style based on label
+  const isStandard = /标准|Standard/i.test(label);
+  const isAdvanced = /进阶|Advanced/i.test(label);
+  const isPro = /专业|Pro/i.test(label);
+
+  if (isPro) {
+    return {
+      bg: 'bg-gradient-to-r from-amber-500 to-yellow-400',
+      text: 'text-white',
+      icon: (
+        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="currentColor" className="shrink-0">
+          <path d="M2 4l3 12h14l3-12-5 4-5-6-5 6z" /><path d="M5 16l-1.5 4h17L19 16" />
+        </svg>
+      ),
+    };
+  }
+  if (isAdvanced) {
+    return {
+      bg: 'bg-gradient-to-r from-purple-500 to-violet-400',
+      text: 'text-white',
+      icon: (
+        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+        </svg>
+      ),
+    };
+  }
+  if (isStandard) {
+    return {
+      bg: 'bg-gradient-to-r from-blue-500 to-cyan-400',
+      text: 'text-white',
+      icon: (
+        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="currentColor" className="shrink-0">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+        </svg>
+      ),
+    };
+  }
+
+  return null;
+};
+
+const formatDate = (dateStr: string | null): string => {
+  if (!dateStr) return '';
+  // Format "2026-03-29" to "26.03.29"
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  return `${parts[0].slice(2)}.${parts[1]}.${parts[2]}`;
+};
+
+const formatCredits = (n: number): string => {
+  if (Number.isInteger(n)) return n.toString();
+  return n.toFixed(2);
+};
+
+const CreditItemRow: React.FC<{ item: CreditItem; isEn: boolean }> = ({ item, isEn }) => {
+  const label = isEn ? item.labelEn : item.label;
+  const badge = item.type === 'subscription' ? getSubscriptionBadge(label) : null;
+  const expiresText = item.expiresAt
+    ? `${i18nService.t('authExpiresAt')}${formatDate(item.expiresAt)}`
+    : '';
+
+  return (
+    <div className="flex flex-col gap-0.5 py-1.5 first:pt-0 last:pb-0">
+      <div className="flex items-center gap-1.5">
+        {badge ? (
+          <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${badge.bg} ${badge.text}`}>
+            {badge.icon}
+            {label}
+          </span>
+        ) : (
+          <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
+            {label}
+          </span>
+        )}
+        <span className="text-xs font-medium dark:text-claude-darkText text-claude-text">
+          {formatCredits(item.creditsRemaining)}{i18nService.t('authCreditsUnit')}
+        </span>
+      </div>
+      {expiresText && (
+        <span className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary pl-0.5">
+          {expiresText}
+        </span>
+      )}
+    </div>
+  );
+};
 
 const UserMenu: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const user = useSelector((state: RootState) => state.auth.user);
-  const quota = useSelector((state: RootState) => state.auth.quota);
+  const profileSummary = useSelector((state: RootState) => state.auth.profileSummary);
+  const [creditsExpanded, setCreditsExpanded] = useState(false);
+  const isEn = i18nService.getLanguage() === 'en';
+
+  useEffect(() => {
+    authService.fetchProfileSummary();
+  }, []);
 
   const handleLogout = async () => {
     await authService.logout();
     onClose();
   };
 
-  const handleTopUp = async () => {
-    await window.electron.shell.openExternal('https://portal.lobsterai.com');
+  const handleSubscribe = async () => {
+    await window.electron.shell.openExternal('https://local.youdao.com:5180/pricing');
+  };
+
+  const handleLearnMore = async () => {
+    await window.electron.shell.openExternal('https://local.youdao.com:5180/profile');
   };
 
   const phoneSuffix = user?.phone ? user.phone.slice(-4) : '';
 
+  const totalCredits = profileSummary?.totalCreditsRemaining ?? 0;
+  const creditItems = profileSummary?.creditItems ?? [];
+  const hasCredits = creditItems.length > 0;
+
   return (
-    <div className="absolute bottom-full left-0 mb-1 w-56 dark:bg-claude-darkSurface bg-claude-surface rounded-xl shadow-popover border dark:border-claude-darkBorder border-claude-border overflow-hidden z-50 popover-enter">
-      {/* User info */}
+    <div className="absolute bottom-full left-0 mb-1 w-60 dark:bg-claude-darkSurface bg-claude-surface rounded-xl shadow-popover border dark:border-claude-darkBorder border-claude-border overflow-hidden z-50 popover-enter">
+      {/* Account info */}
       <div className="px-4 py-3 border-b dark:border-claude-darkBorder border-claude-border">
         <div className="text-sm font-medium dark:text-claude-darkText text-claude-text truncate">
           {user?.nickname || phoneSuffix}
@@ -33,40 +137,81 @@ const UserMenu: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         )}
       </div>
 
-      {/* Quota info */}
-      {quota && (
-        <div className="px-4 py-3 border-b dark:border-claude-darkBorder border-claude-border">
-          <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1.5">
-            {i18nService.t('authDailyQuota')}
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex-1 h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-claude-accent transition-all"
-                style={{ width: `${Math.min(100, (quota.dailyUsed / Math.max(1, quota.dailyLimit)) * 100)}%` }}
-              />
-            </div>
-            <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary shrink-0">
-              {quota.dailyUsed}/{quota.dailyLimit}
+      {/* Credits section - collapsible */}
+      <div className="border-b dark:border-claude-darkBorder border-claude-border">
+        <button
+          type="button"
+          onClick={() => setCreditsExpanded(!creditsExpanded)}
+          className="w-full px-4 py-2.5 flex items-center justify-between cursor-pointer hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover transition-colors"
+        >
+          <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
+            {i18nService.t('authCreditsRemaining')}
+          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-medium dark:text-claude-darkText text-claude-text">
+              {formatCredits(totalCredits)}{i18nService.t('authCreditsUnit')}
             </span>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`dark:text-claude-darkTextSecondary text-claude-textSecondary transition-transform duration-200 ${creditsExpanded ? 'rotate-180' : ''}`}
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
           </div>
-        </div>
-      )}
+        </button>
+
+        {/* Expanded credit details */}
+        {creditsExpanded && (
+          <div className="px-4 pb-3">
+            {hasCredits ? (
+              <div className="divide-y dark:divide-claude-darkBorder divide-claude-border">
+                {creditItems.map((item, idx) => (
+                  <CreditItemRow key={idx} item={item} isEn={isEn} />
+                ))}
+              </div>
+            ) : (
+              <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary py-1">
+                {i18nService.t('authZeroCredits')}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={handleLearnMore}
+              className="mt-2 text-xs text-claude-accent hover:underline cursor-pointer"
+            >
+              {i18nService.t('authLearnMore')}
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Actions */}
       <div className="py-1">
         <button
           type="button"
-          onClick={handleTopUp}
-          className="w-full px-4 py-2 text-left text-sm dark:text-claude-darkText text-claude-text dark:hover:bg-claude-darkSurfaceHover hover:bg-claude-surfaceHover transition-colors"
+          onClick={handleSubscribe}
+          className="w-full px-4 py-2 text-left text-sm dark:text-claude-darkText text-claude-text dark:hover:bg-claude-darkSurfaceHover hover:bg-claude-surfaceHover transition-colors cursor-pointer"
         >
-          {i18nService.t('authTopUp')}
+          {i18nService.t('authValueAddedServices')}
         </button>
         <button
           type="button"
           onClick={handleLogout}
-          className="w-full px-4 py-2 text-left text-sm text-red-500 dark:hover:bg-claude-darkSurfaceHover hover:bg-claude-surfaceHover transition-colors"
+          className="w-full px-4 py-2 text-left text-sm text-red-500 dark:hover:bg-claude-darkSurfaceHover hover:bg-claude-surfaceHover transition-colors cursor-pointer flex items-center gap-2"
         >
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
           {i18nService.t('authLogout')}
         </button>
       </div>
@@ -112,7 +257,7 @@ const LoginButton: React.FC = () => {
       <button
         type="button"
         onClick={handleClick}
-        className="inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover transition-colors"
+        className="inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover transition-colors cursor-pointer"
       >
         {isLoggedIn ? (
           <>

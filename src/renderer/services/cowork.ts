@@ -129,6 +129,8 @@ class CoworkService {
     this.streamListenerCleanups.push(completeCleanup);
 
     // Error listener
+    // Note: error message is already persisted and sent via 'message' event from main process,
+    // so we only update session status here to avoid duplicate messages.
     const errorCleanup = cowork.onStreamError(({ sessionId }) => {
       store.dispatch(updateSessionStatus({ sessionId, status: 'error' }));
     });

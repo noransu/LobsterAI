@@ -362,10 +362,17 @@ contextBridge.exposeInMainWorld('electron', {
     logout: () => ipcRenderer.invoke('auth:logout'),
     refreshToken: () => ipcRenderer.invoke('auth:refreshToken'),
     getAccessToken: () => ipcRenderer.invoke('auth:getAccessToken'),
+    getModels: () => ipcRenderer.invoke('auth:getModels'),
+    getProfileSummary: () => ipcRenderer.invoke('auth:getProfileSummary'),
     onCallback: (callback: (data: { code: string }) => void) => {
       const handler = (_event: any, data: { code: string }) => callback(data);
       ipcRenderer.on('auth:callback', handler);
       return () => ipcRenderer.removeListener('auth:callback', handler);
+    },
+    onQuotaChanged: (callback: () => void) => {
+      const handler = () => callback();
+      ipcRenderer.on('auth:quotaChanged', handler);
+      return () => ipcRenderer.removeListener('auth:quotaChanged', handler);
     },
   },
 });

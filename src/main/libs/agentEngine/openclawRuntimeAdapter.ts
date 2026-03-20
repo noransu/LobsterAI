@@ -985,6 +985,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
 
     const client = this.requireGatewayClient();
     try {
+      console.log('[OpenClawRuntime] chat.send params:', { sessionKey, messageLength: outboundMessage.length, runId });
       const attachments = options.imageAttachments?.length
         ? options.imageAttachments.map((img) => ({
           type: 'image',
@@ -2289,6 +2290,7 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
   }
 
   private handleChatError(sessionId: string, turn: ActiveTurn, payload: ChatEventPayload): void {
+    console.log('[OpenClawRuntime] handleChatError payload:', JSON.stringify(payload).slice(0, 1000));
     let errorMessage = payload.errorMessage?.trim() || 'OpenClaw run failed';
 
     // Detect model API errors that are likely caused by unsupported image content
@@ -2299,6 +2301,13 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
 
     const erroredSessionKey = turn.sessionKey;
     this.store.updateSession(sessionId, { status: 'error' });
+    // Persist error message to SQLite so it survives session switches
+    const errorMsg = this.store.addMessage(sessionId, {
+      type: 'system',
+      content: errorMessage,
+      metadata: { error: errorMessage },
+    });
+    this.emit('message', sessionId, errorMsg);
     this.emit('error', sessionId, errorMessage);
     this.cleanupSessionTurn(sessionId);
     this.rejectTurn(sessionId, new Error(errorMessage));

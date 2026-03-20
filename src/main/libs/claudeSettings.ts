@@ -60,6 +60,20 @@ export function setStoreGetter(getter: () => SqliteStore | null): void {
   storeGetter = getter;
 }
 
+// Auth token getter injected from main.ts for server model provider
+let authTokensGetter: (() => { accessToken: string; refreshToken: string } | null) | null = null;
+
+export function setAuthTokensGetter(getter: () => { accessToken: string; refreshToken: string } | null): void {
+  authTokensGetter = getter;
+}
+
+// Server base URL getter injected from main.ts
+let serverBaseUrlGetter: (() => string) | null = null;
+
+export function setServerBaseUrlGetter(getter: () => string): void {
+  serverBaseUrlGetter = getter;
+}
+
 const getStore = (): SqliteStore | null => {
   if (!storeGetter) {
     return null;
@@ -147,6 +161,32 @@ function resolveMatchedProvider(appConfig: AppConfig): { matched: MatchedProvide
 
   let providerEntry: [string, ProviderConfig] | undefined;
   const preferredProviderName = appConfig.model?.defaultModelProvider?.trim();
+
+  // Handle lobsterai-server provider: dynamically construct from auth tokens
+  if (preferredProviderName === 'lobsterai-server') {
+    const tokens = authTokensGetter?.();
+    const serverBaseUrl = serverBaseUrlGetter?.();
+    if (tokens?.accessToken && serverBaseUrl) {
+      const baseURL = `${serverBaseUrl}/api/proxy/v1`;
+      console.log('[ClaudeSettings] resolveMatchedProvider lobsterai-server:', { serverBaseUrl, baseURL, modelId, apiFormat: 'openai' });
+      return {
+        matched: {
+          providerName: 'lobsterai-server',
+          providerConfig: {
+            enabled: true,
+            apiKey: tokens.accessToken,
+            baseUrl: baseURL,
+            apiFormat: 'openai',
+            models: [{ id: modelId }],
+          },
+          modelId,
+          apiFormat: 'openai',
+          baseURL,
+        },
+      };
+    }
+  }
+
   if (preferredProviderName) {
     const preferredProvider = providers[preferredProviderName];
     if (
@@ -350,7 +390,7 @@ export function resolveRawApiConfig(): ApiConfigResolution {
     return { config: null, error };
   }
   const apiKey = matched.providerConfig.apiKey?.trim() || '';
-  return {
+  const result: ApiConfigResolution = {
     config: {
       apiKey: matched.providerName === 'ollama' && matched.apiFormat === 'anthropic' && !apiKey
         ? 'sk-ollama-local'
@@ -365,6 +405,13 @@ export function resolveRawApiConfig(): ApiConfigResolution {
       supportsImage: matched.supportsImage,
     },
   };
+  console.log('[ClaudeSettings] resolveRawApiConfig result:', {
+    baseURL: result.config?.baseURL,
+    model: result.config?.model,
+    apiType: result.config?.apiType,
+    providerName: result.providerMetadata?.providerName,
+  });
+  return result;
 }
 
 export function buildEnvForConfig(config: CoworkApiConfig): Record<string, string> {

@@ -8,10 +8,27 @@ export interface UserProfile {
 }
 
 export interface UserQuota {
-  dailyLimit: number;
-  dailyUsed: number;
-  planName: string | null; // null = free tier
-  creditsBalance: number;
+  planName: string;           // "免费", "标准", "进阶", "专业"
+  subscriptionStatus: string; // "free" | "active"
+  creditsLimit: number;       // total credits limit
+  creditsUsed: number;        // credits used
+  creditsRemaining: number;   // credits remaining
+}
+
+export interface CreditItem {
+  type: 'subscription' | 'boost' | 'free';
+  label: string;
+  labelEn: string;
+  creditsRemaining: number;
+  expiresAt: string | null;
+}
+
+export interface ProfileSummary {
+  id: number;
+  nickname: string;
+  avatarUrl: string | null;
+  totalCreditsRemaining: number;
+  creditItems: CreditItem[];
 }
 
 interface AuthState {
@@ -19,6 +36,7 @@ interface AuthState {
   isLoading: boolean;
   user: UserProfile | null;
   quota: UserQuota | null;
+  profileSummary: ProfileSummary | null;
 }
 
 const initialState: AuthState = {
@@ -26,6 +44,7 @@ const initialState: AuthState = {
   isLoading: true,
   user: null,
   quota: null,
+  profileSummary: null,
 };
 
 const authSlice = createSlice({
@@ -46,12 +65,16 @@ const authSlice = createSlice({
       state.isLoading = false;
       state.user = null;
       state.quota = null;
+      state.profileSummary = null;
     },
     updateQuota(state, action: PayloadAction<UserQuota>) {
       state.quota = action.payload;
     },
+    setProfileSummary(state, action: PayloadAction<ProfileSummary>) {
+      state.profileSummary = action.payload;
+    },
   },
 });
 
-export const { setAuthLoading, setLoggedIn, setLoggedOut, updateQuota } = authSlice.actions;
+export const { setAuthLoading, setLoggedIn, setLoggedOut, updateQuota, setProfileSummary } = authSlice.actions;
 export default authSlice.reducer;

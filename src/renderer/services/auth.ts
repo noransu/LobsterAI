@@ -1,8 +1,11 @@
 import { store } from '../store';
-import { setAuthLoading, setLoggedIn, setLoggedOut, updateQuota } from '../store/slices/authSlice';
+import { setAuthLoading, setLoggedIn, setLoggedOut, updateQuota, setProfileSummary } from '../store/slices/authSlice';
+import { setServerModels, clearServerModels } from '../store/slices/modelSlice';
+import type { Model } from '../store/slices/modelSlice';
 
 class AuthService {
   private unsubCallback: (() => void) | null = null;
+  private unsubQuotaChanged: (() => void) | null = null;
 
   /**
    * Initialize: try to restore login state from persisted token.
@@ -13,6 +16,7 @@ class AuthService {
       const result = await window.electron.auth.getUser();
       if (result.success && result.user) {
         store.dispatch(setLoggedIn({ user: result.user, quota: result.quota }));
+        await this.loadServerModels();
       } else {
         store.dispatch(setLoggedOut());
       }
@@ -23,6 +27,11 @@ class AuthService {
     // Listen for OAuth callback from protocol handler
     this.unsubCallback = window.electron.auth.onCallback(async ({ code }) => {
       await this.handleCallback(code);
+    });
+
+    // Listen for quota changes (e.g. after cowork session using server model)
+    this.unsubQuotaChanged = window.electron.auth.onQuotaChanged(() => {
+      this.refreshQuota();
     });
   }
 
@@ -41,6 +50,7 @@ class AuthService {
       const result = await window.electron.auth.exchange(code);
       if (result.success) {
         store.dispatch(setLoggedIn({ user: result.user, quota: result.quota }));
+        await this.loadServerModels();
       }
     } catch (e) {
       console.error('Auth callback failed:', e);
@@ -53,6 +63,7 @@ class AuthService {
   async logout() {
     await window.electron.auth.logout();
     store.dispatch(setLoggedOut());
+    store.dispatch(clearServerModels());
   }
 
   /**
@@ -63,6 +74,20 @@ class AuthService {
       const result = await window.electron.auth.getQuota();
       if (result.success) {
         store.dispatch(updateQuota(result.quota));
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  /**
+   * Fetch profile summary (credits breakdown).
+   */
+  async fetchProfileSummary() {
+    try {
+      const result = await window.electron.auth.getProfileSummary();
+      if (result.success && result.data) {
+        store.dispatch(setProfileSummary(result.data));
       }
     } catch {
       // ignore
@@ -82,6 +107,29 @@ class AuthService {
 
   destroy() {
     this.unsubCallback?.();
+    this.unsubQuotaChanged?.();
+  }
+
+  /**
+   * Load available models from server and dispatch to store.
+   */
+  private async loadServerModels() {
+    try {
+      const modelsResult = await window.electron.auth.getModels();
+      if (modelsResult.success && modelsResult.models) {
+        const serverModels: Model[] = modelsResult.models.map((m: { modelId: string; modelName: string; provider: string; apiFormat: string }) => ({
+          id: m.modelId,
+          name: m.modelName,
+          provider: m.provider,
+          providerKey: 'lobsterai-server',
+          isServerModel: true,
+          serverApiFormat: m.apiFormat,
+        }));
+        store.dispatch(setServerModels(serverModels));
+      }
+    } catch {
+      // ignore — server models are optional
+    }
   }
 }
 

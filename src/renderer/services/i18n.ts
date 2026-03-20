@@ -135,7 +135,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
 
     // 认证相关
     authDailyQuota: '今日额度',
+    authCreditsQuota: '积分额度',
     authTopUp: '充值',
+    authSubscribe: '订阅',
+    authCurrentPlan: '当前套餐',
     authLogout: '退出登录',
     authLoginRequired: '请先登录后再开始对话。',
     authLoginRequiredBtn: '登录',
@@ -144,6 +147,16 @@ const translations: Record<LanguageType, Record<string, string>> = {
     authSettingsLink: '设置',
     authLoginToChat: '登录后即可开始聊天',
     authFreeLabel: 'Free',
+    authCreditsRemaining: '剩余额度',
+    authCreditsUnit: '积分',
+    authExpiresAt: '有效期至',
+    authLearnMore: '了解更多',
+    authValueAddedServices: '增值服务',
+    authZeroCredits: '0积分',
+    planFree: '免费',
+    planStandard: '标准',
+    planAdvanced: '进阶',
+    planPro: '专业',
     
     // 错误信息
     failedToLoadSettings: '加载设置失败',
@@ -252,6 +265,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkModelSettingsTitle: '模型设置',
     coworkModelSettingsHint: 'LobsterAI 使用模型设置中的当前模型与提供商配置。',
     coworkModelSettingsAction: '前往模型设置',
+    modelGroupServer: '套餐模型',
+    modelGroupUser: '自配模型',
     coworkApiConfigTitle: 'API 配置',
     coworkApiConfigHint: '支持 Anthropic 兼容与 OpenAI 兼容协议（OpenAI 兼容通过本地转换服务接入）。',
     coworkAgentEngine: 'Agent 引擎',
@@ -1055,7 +1070,10 @@ const translations: Record<LanguageType, Record<string, string>> = {
 
     // Auth
     authDailyQuota: 'Daily Quota',
+    authCreditsQuota: 'Credits',
     authTopUp: 'Top Up',
+    authSubscribe: 'Subscribe',
+    authCurrentPlan: 'Current Plan',
     authLogout: 'Log Out',
     authLoginRequired: 'Please log in to start a conversation.',
     authLoginRequiredBtn: 'Log In',
@@ -1064,6 +1082,15 @@ const translations: Record<LanguageType, Record<string, string>> = {
     authSettingsLink: 'Settings',
     authLoginToChat: 'Log in to start chatting',
     authFreeLabel: 'Free',
+    authCreditsRemaining: 'Credits Remaining',
+    authCreditsUnit: 'credits',
+    authExpiresAt: 'Expires',
+    authLearnMore: 'Learn More',
+    authValueAddedServices: 'Premium Services',
+    authZeroCredits: '0 credits',
+    planFree: 'Free',
+    planAdvanced: 'Advanced',
+    planPro: 'Pro',
     
     // Error Messages
     failedToLoadSettings: 'Failed to load settings',
@@ -1172,6 +1199,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkModelSettingsTitle: 'Model Settings',
     coworkModelSettingsHint: 'LobsterAI uses the current model and provider configuration from Model Settings.',
     coworkModelSettingsAction: 'Go to Model Settings',
+    modelGroupServer: 'Plan Models',
+    modelGroupUser: 'Custom Models',
     coworkApiConfigTitle: 'API Configuration',
     coworkApiConfigHint: 'Supports Anthropic-compatible and OpenAI-compatible APIs (OpenAI compatibility is bridged by a local adapter).',
     coworkAgentEngine: 'Agent Engine',

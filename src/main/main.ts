@@ -14,7 +14,7 @@ import {
 } from './libs/agentEngine';
 import { SkillManager } from './skillManager';
 import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
-import { getCurrentApiConfig, resolveCurrentApiConfig, setStoreGetter } from './libs/claudeSettings';
+import { getCurrentApiConfig, resolveCurrentApiConfig, setStoreGetter, setAuthTokensGetter, setServerBaseUrlGetter } from './libs/claudeSettings';
 import { saveCoworkApiConfig } from './libs/coworkConfigStore';
 import { generateSessionTitle, probeCoworkModelReadiness } from './libs/coworkUtil';
 import { startCoworkOpenAICompatProxy, stopCoworkOpenAICompatProxy } from './libs/coworkOpenAICompatProxy';
@@ -53,6 +53,7 @@ import { McpStore } from './mcpStore';
 import { CronJobService } from './libs/cronJobService';
 import { buildScheduledTaskEnginePrompt } from './libs/scheduledTaskEnginePrompt';
 import { McpServerManager } from './libs/mcpServerManager';
+import { getServerApiBaseUrl, getLoginUrl, fetchLoginUrlFromOvermind } from './libs/endpoints';
 import { McpBridgeServer } from './libs/mcpBridgeServer';
 import type { McpBridgeConfig } from './libs/openclawConfigSync';
 import { downloadUpdate, installUpdate, cancelActiveDownload } from './libs/appUpdateInstaller';
@@ -909,6 +910,19 @@ const bindCoworkRuntimeForwarder = (): void => {
       if (win.isDestroyed()) return;
       win.webContents.send('cowork:stream:complete', { sessionId, claudeSessionId });
     });
+    // If session used a server model, notify renderer to refresh quota
+    try {
+      const apiConfig = resolveCurrentApiConfig();
+      if (apiConfig.providerMetadata?.providerName === 'lobsterai-server') {
+        const windows = BrowserWindow.getAllWindows();
+        windows.forEach((win) => {
+          if (win.isDestroyed()) return;
+          win.webContents.send('auth:quotaChanged');
+        });
+      }
+    } catch {
+      // ignore
+    }
   });
 
   runtime.on('error', (sessionId: string, error: string) => {
@@ -1639,15 +1653,6 @@ if (!gotTheLock) {
   // ── Auth IPC handlers ──
 
   /**
-   * Helper: Read the server base URL from the app config stored in SQLite.
-   * Falls back to a compile-time default if nothing is persisted yet.
-   */
-  const getServerBaseUrl = (): string => {
-    const cfg = getStore().get<{ server?: { baseUrl?: string } }>('app_config');
-    return cfg?.server?.baseUrl || 'https://api.lobsterai.com';
-  };
-
-  /**
    * Helper: Persist auth tokens into the kv store.
    */
   const saveAuthTokens = (accessToken: string, refreshToken: string) => {
@@ -1662,10 +1667,84 @@ if (!gotTheLock) {
     getStore().delete('auth_tokens');
   };
 
+  /**
+   * Helper: Fetch with Bearer token, auto-refresh on 401 and retry once.
+   */
+  const fetchWithAuth = async (url: string, options?: RequestInit): Promise<Response> => {
+    const tokens = getAuthTokens();
+    if (!tokens) throw new Error('No auth tokens');
+
+    const doFetch = (accessToken: string) =>
+      net.fetch(url, {
+        ...options,
+        headers: { ...(options?.headers as Record<string, string>), Authorization: `Bearer ${accessToken}` },
+      });
+
+    let resp = await doFetch(tokens.accessToken);
+
+    if (resp.status === 401 && tokens.refreshToken) {
+      const serverBaseUrl = getServerApiBaseUrl();
+      const refreshResp = await net.fetch(`${serverBaseUrl}/api/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken: tokens.refreshToken }),
+      });
+      if (refreshResp.ok) {
+        const refreshBody = await refreshResp.json() as { code: number; data: { accessToken: string; refreshToken?: string } };
+        if (refreshBody.code === 0 && refreshBody.data) {
+          saveAuthTokens(refreshBody.data.accessToken, refreshBody.data.refreshToken || tokens.refreshToken);
+          resp = await doFetch(refreshBody.data.accessToken);
+        }
+      }
+    }
+
+    return resp;
+  };
+
+  /**
+   * Normalize quota data from various server response formats into a unified shape.
+   */
+  const normalizeQuota = (raw: Record<string, unknown>) => {
+    let creditsLimit = 0;
+    let creditsUsed = 0;
+    let planName = '免费';
+    let subscriptionStatus = 'free';
+
+    if (typeof raw.freeCreditsTotal === 'number') {
+      // Free user format from /api/user/quota
+      creditsLimit = raw.freeCreditsTotal as number;
+      creditsUsed = (raw.freeCreditsUsed as number) || 0;
+      planName = (raw.planName as string) || '免费';
+      subscriptionStatus = (raw.subscriptionStatus as string) || 'free';
+    } else if (typeof raw.monthlyCreditsLimit === 'number') {
+      // Paid user format from /api/user/quota
+      creditsLimit = raw.monthlyCreditsLimit as number;
+      creditsUsed = (raw.monthlyCreditsUsed as number) || 0;
+      planName = (raw.planName as string) || '标准';
+      subscriptionStatus = (raw.subscriptionStatus as string) || 'active';
+    } else if (typeof raw.dailyCreditsLimit === 'number') {
+      // Legacy exchange format
+      creditsLimit = raw.dailyCreditsLimit as number;
+      creditsUsed = (raw.dailyCreditsUsed as number) || 0;
+      planName = (raw.planName as string) || '免费';
+      subscriptionStatus = (raw.subscriptionStatus as string) || 'free';
+    } else if (typeof raw.creditsLimit === 'number') {
+      // Already normalized
+      return raw;
+    }
+
+    return {
+      planName,
+      subscriptionStatus,
+      creditsLimit,
+      creditsUsed,
+      creditsRemaining: Math.max(0, creditsLimit - creditsUsed),
+    };
+  };
+
   ipcMain.handle('auth:login', async () => {
     try {
-      const serverBaseUrl = getServerBaseUrl();
-      const loginUrl = `${serverBaseUrl}/api/auth/login?source=electron`;
+      const loginUrl = `${getLoginUrl()}?source=electron`;
       await shell.openExternal(loginUrl);
       return { success: true };
     } catch (error) {
@@ -1676,23 +1755,30 @@ if (!gotTheLock) {
 
   ipcMain.handle('auth:exchange', async (_event, { code }: { code: string }) => {
     try {
-      const serverBaseUrl = getServerBaseUrl();
-      const resp = await fetch(`${serverBaseUrl}/api/auth/exchange`, {
+      const serverBaseUrl = getServerApiBaseUrl();
+      const resp = await net.fetch(`${serverBaseUrl}/api/auth/exchange`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ authCode: code }),
       });
       if (!resp.ok) {
         return { success: false, error: `Exchange failed: ${resp.status}` };
       }
-      const data = await resp.json() as {
-        accessToken: string;
-        refreshToken: string;
-        user: Record<string, unknown>;
-        quota: Record<string, unknown>;
+      const body = await resp.json() as {
+        code: number;
+        message?: string;
+        data: {
+          accessToken: string;
+          refreshToken: string;
+          user: Record<string, unknown>;
+          quota: Record<string, unknown>;
+        };
       };
-      saveAuthTokens(data.accessToken, data.refreshToken);
-      return { success: true, user: data.user, quota: data.quota };
+      if (body.code !== 0 || !body.data) {
+        return { success: false, error: body.message || 'Exchange failed' };
+      }
+      saveAuthTokens(body.data.accessToken, body.data.refreshToken);
+      return { success: true, user: body.data.user, quota: normalizeQuota(body.data.quota) };
     } catch (error) {
       console.error('[Auth] exchange failed:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Exchange failed' };
@@ -1703,13 +1789,22 @@ if (!gotTheLock) {
     try {
       const tokens = getAuthTokens();
       if (!tokens) return { success: false };
-      const serverBaseUrl = getServerBaseUrl();
-      const resp = await fetch(`${serverBaseUrl}/api/user/profile`, {
-        headers: { Authorization: `Bearer ${tokens.accessToken}` },
-      });
-      if (!resp.ok) return { success: false };
-      const data = await resp.json() as { user: Record<string, unknown>; quota: Record<string, unknown> };
-      return { success: true, user: data.user, quota: data.quota };
+      const serverBaseUrl = getServerApiBaseUrl();
+      // Fetch user profile
+      const profileResp = await fetchWithAuth(`${serverBaseUrl}/api/user/profile`);
+      if (!profileResp.ok) return { success: false };
+      const profileBody = await profileResp.json() as { code: number; data: Record<string, unknown> };
+      if (profileBody.code !== 0 || !profileBody.data) return { success: false };
+      // Fetch quota separately
+      const quotaResp = await fetchWithAuth(`${serverBaseUrl}/api/user/quota`);
+      let quota = null;
+      if (quotaResp.ok) {
+        const quotaBody = await quotaResp.json() as { code: number; data: Record<string, unknown> };
+        if (quotaBody.code === 0 && quotaBody.data) {
+          quota = normalizeQuota(quotaBody.data);
+        }
+      }
+      return { success: true, user: profileBody.data, quota };
     } catch {
       return { success: false };
     }
@@ -1719,13 +1814,27 @@ if (!gotTheLock) {
     try {
       const tokens = getAuthTokens();
       if (!tokens) return { success: false };
-      const serverBaseUrl = getServerBaseUrl();
-      const resp = await fetch(`${serverBaseUrl}/api/user/quota`, {
-        headers: { Authorization: `Bearer ${tokens.accessToken}` },
-      });
+      const serverBaseUrl = getServerApiBaseUrl();
+      const resp = await fetchWithAuth(`${serverBaseUrl}/api/user/quota`);
       if (!resp.ok) return { success: false };
-      const data = await resp.json() as { quota: Record<string, unknown> };
-      return { success: true, quota: data.quota };
+      const body = await resp.json() as { code: number; data: Record<string, unknown> };
+      if (body.code !== 0 || !body.data) return { success: false };
+      return { success: true, quota: normalizeQuota(body.data) };
+    } catch {
+      return { success: false };
+    }
+  });
+
+  ipcMain.handle('auth:getProfileSummary', async () => {
+    try {
+      const tokens = getAuthTokens();
+      if (!tokens) return { success: false };
+      const serverBaseUrl = getServerApiBaseUrl();
+      const resp = await fetchWithAuth(`${serverBaseUrl}/api/user/profile-summary`);
+      if (!resp.ok) return { success: false };
+      const body = await resp.json() as { code: number; data: Record<string, unknown> };
+      if (body.code !== 0 || !body.data) return { success: false };
+      return { success: true, data: body.data };
     } catch {
       return { success: false };
     }
@@ -1735,8 +1844,8 @@ if (!gotTheLock) {
     try {
       const tokens = getAuthTokens();
       if (tokens) {
-        const serverBaseUrl = getServerBaseUrl();
-        await fetch(`${serverBaseUrl}/api/auth/logout`, {
+        const serverBaseUrl = getServerApiBaseUrl();
+        await net.fetch(`${serverBaseUrl}/api/auth/logout`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${tokens.accessToken}` },
         }).catch(() => { /* best-effort */ });
@@ -1753,16 +1862,17 @@ if (!gotTheLock) {
     try {
       const tokens = getAuthTokens();
       if (!tokens?.refreshToken) return { success: false };
-      const serverBaseUrl = getServerBaseUrl();
-      const resp = await fetch(`${serverBaseUrl}/api/auth/refresh`, {
+      const serverBaseUrl = getServerApiBaseUrl();
+      const resp = await net.fetch(`${serverBaseUrl}/api/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken: tokens.refreshToken }),
       });
       if (!resp.ok) return { success: false };
-      const data = await resp.json() as { accessToken: string; refreshToken?: string };
-      saveAuthTokens(data.accessToken, data.refreshToken || tokens.refreshToken);
-      return { success: true, accessToken: data.accessToken };
+      const body = await resp.json() as { code: number; data: { accessToken: string; refreshToken?: string } };
+      if (body.code !== 0 || !body.data) return { success: false };
+      saveAuthTokens(body.data.accessToken, body.data.refreshToken || tokens.refreshToken);
+      return { success: true, accessToken: body.data.accessToken };
     } catch {
       return { success: false };
     }
@@ -1771,6 +1881,32 @@ if (!gotTheLock) {
   ipcMain.handle('auth:getAccessToken', async () => {
     const tokens = getAuthTokens();
     return tokens?.accessToken || null;
+  });
+
+  ipcMain.handle('auth:getModels', async () => {
+    try {
+      const tokens = getAuthTokens();
+      if (!tokens) {
+        console.log('[Auth:getModels] No auth tokens available');
+        return { success: false };
+      }
+      const serverBaseUrl = getServerApiBaseUrl();
+      const url = `${serverBaseUrl}/api/models/available`;
+      console.log('[Auth:getModels] Fetching:', url);
+      const resp = await fetchWithAuth(url);
+      console.log('[Auth:getModels] Response status:', resp.status);
+      if (!resp.ok) {
+        console.log('[Auth:getModels] Response not ok:', resp.status, resp.statusText);
+        return { success: false };
+      }
+      const data = await resp.json() as { code: number; data: Array<{ modelId: string; modelName: string; provider: string; apiFormat: string }> };
+      console.log('[Auth:getModels] Response data:', JSON.stringify(data).slice(0, 500));
+      if (data.code !== 0) return { success: false };
+      return { success: true, models: data.data };
+    } catch (e) {
+      console.error('[Auth:getModels] Error:', e);
+      return { success: false };
+    }
   });
 
   // Skills IPC handlers
@@ -3741,6 +3877,52 @@ if (!gotTheLock) {
     }
     // Inject store getter into claudeSettings
     setStoreGetter(() => store);
+    // Inject auth getters for lobsterai-server provider routing
+    // The getter proactively triggers a background token refresh when the
+    // accessToken is within 5 minutes of expiry, so that the SDK always
+    // gets a fresh token without blocking.
+    let refreshPromise: Promise<void> | null = null;
+    const refreshTokenAsync = async () => {
+      if (refreshPromise) return;
+      refreshPromise = (async () => {
+        try {
+          const tokens = getAuthTokens();
+          if (!tokens?.refreshToken) return;
+          const serverBaseUrl = getServerApiBaseUrl();
+          const resp = await net.fetch(`${serverBaseUrl}/api/auth/refresh`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken: tokens.refreshToken }),
+          });
+          if (resp.ok) {
+            const body = await resp.json() as { code: number; data: { accessToken: string; refreshToken?: string } };
+            if (body.code === 0 && body.data) {
+              saveAuthTokens(body.data.accessToken, body.data.refreshToken || tokens.refreshToken);
+              console.log('[Auth] proactive token refresh succeeded');
+            }
+          }
+        } catch (err) {
+          console.warn('[Auth] proactive token refresh failed:', err);
+        } finally {
+          refreshPromise = null;
+        }
+      })();
+    };
+
+    setAuthTokensGetter(() => {
+      const tokens = getAuthTokens();
+      if (!tokens) return null;
+      // Check if accessToken is close to expiry and trigger background refresh
+      try {
+        const payload = JSON.parse(Buffer.from(tokens.accessToken.split('.')[1], 'base64').toString());
+        const expiresAt = payload.exp * 1000;
+        if (expiresAt - Date.now() < 5 * 60 * 1000) {
+          refreshTokenAsync(); // fire-and-forget
+        }
+      } catch { /* unable to parse JWT, return token as-is */ }
+      return tokens;
+    });
+    setServerBaseUrlGetter(() => getServerApiBaseUrl());
 
     bindCoworkRuntimeForwarder();
     bindOpenClawStatusForwarder();
@@ -3761,6 +3943,9 @@ if (!gotTheLock) {
     console.log('[Main] initApp: setStoreGetter done');
     const manager = getSkillManager();
     console.log('[Main] initApp: getSkillManager done');
+
+    // Fetch login URL from overmind (non-blocking, same timing as skills init)
+    fetchLoginUrlFromOvermind();
 
     // When skills change (install/enable/disable/delete), re-sync AGENTS.md
     // so OpenClaw's IM channel agents pick up the latest skill list.

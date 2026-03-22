@@ -383,6 +383,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkDescription: '7×24 小时帮你干活的全场景个人助理 Agent',
     coworkNewSession: '新会话',
     coworkContinuePlaceholder: '继续对话...',
+    coworkRemoteManagedPlaceholder: '该会话由 IM 通道创建，请在对应的 IM 平台操作',
     updateAvailablePill: '有新版本',
     updateAvailableTitle: '检测到新版本',
     updateAvailableMessage: '检测到新版本，请前往官网下载并覆盖安装。',
@@ -445,6 +446,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkErrorServerError: '服务端出现错误，请稍后重试。',
     coworkErrorSessionStartFailed: '会话启动失败：{error}',
     coworkErrorSessionContinueFailed: '发送消息失败：{error}',
+    coworkErrorEngineNotReady: 'AI 引擎正在启动中，请稍等几秒后重试。',
+    coworkErrorUnknown: '任务执行出错，请重试。如果问题持续出现，请检查模型配置。',
 
     // Skills
     skills: '技能',
@@ -1039,6 +1042,13 @@ const translations: Record<LanguageType, Record<string, string>> = {
     scheduledTasksSessionKey: '会话键',
     scheduledTasksToggleWarningAtPast: '该任务的执行时间已过，启用后将不会运行',
     scheduledTasksToggleWarningExpired: '该任务已过期，启用后将不会运行',
+
+    // 隐私协议弹窗
+    privacyDialogTitle: '网易有道LobsterAI服务协议',
+    privacyDialogDesc: '在使用网易有道LobsterAI之前，请您仔细阅读{link}内容，并进行确认。',
+    privacyDialogLinkText: '网易有道LobsterAI服务协议',
+    privacyDialogAccept: '我已阅读并同意',
+    privacyDialogReject: '拒绝',
   },
   en: {
     // Common
@@ -1418,6 +1428,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkDescription: 'A 24/7 personal assistant agent that gets work done for you',
     coworkNewSession: 'New Session',
     coworkContinuePlaceholder: 'Continue the conversation...',
+    coworkRemoteManagedPlaceholder: 'This session was created via IM. Please use the corresponding IM platform.',
     updateAvailablePill: 'New update',
     updateAvailableTitle: 'New version available',
     updateAvailableMessage: 'A new version is available. Please download it from the official website and install over the current version.',
@@ -1480,6 +1491,8 @@ const translations: Record<LanguageType, Record<string, string>> = {
     coworkErrorServerError: 'Server error occurred. Please try again later.',
     coworkErrorSessionStartFailed: 'Failed to start session: {error}',
     coworkErrorSessionContinueFailed: 'Failed to send message: {error}',
+    coworkErrorEngineNotReady: 'AI engine is starting up. Please wait a few seconds and try again.',
+    coworkErrorUnknown: 'Task failed due to an unexpected error. Please retry. If the issue persists, check your model configuration.',
 
     // Skills
     skills: 'Skills',
@@ -2074,6 +2087,13 @@ const translations: Record<LanguageType, Record<string, string>> = {
     scheduledTasksSessionKey: 'Session Key',
     scheduledTasksToggleWarningAtPast: 'The execution time of this task has passed. It will not run after enabling',
     scheduledTasksToggleWarningExpired: 'This task has expired. It will not run after enabling',
+
+    // Privacy dialog
+    privacyDialogTitle: 'NetEase Youdao LobsterAI Terms of Service',
+    privacyDialogDesc: 'Before using NetEase Youdao LobsterAI, please carefully read the {link} and confirm.',
+    privacyDialogLinkText: 'NetEase Youdao LobsterAI Terms of Service',
+    privacyDialogAccept: 'I have read and agree',
+    privacyDialogReject: 'Decline',
   }
 };
 

@@ -37,6 +37,7 @@ import {
 import type { Database } from 'sql.js';
 import type { CoworkRuntime } from '../libs/agentEngine/types';
 import type { CoworkStore } from '../coworkStore';
+import { classifyErrorKey } from '../../common/coworkErrorClassify';
 const CONNECTIVITY_TIMEOUT_MS = 10_000;
 const INBOUND_ACTIVITY_WARN_AFTER_MS = 2 * 60 * 1000;
 
@@ -252,7 +253,9 @@ export class IMGatewayManager extends EventEmitter {
         }
         // Send error message to user
         try {
-          await replyFn(`处理消息时出错: ${error.message}`);
+          const errorKey = classifyErrorKey(error.message);
+          const friendlyMessage = errorKey ? t(errorKey) : error.message;
+          await replyFn(`${t('imErrorPrefix')}: ${friendlyMessage}`);
         } catch (replyError) {
           console.error(`[IMGatewayManager] Failed to send error reply: ${replyError}`);
         }
@@ -1402,17 +1405,20 @@ export class IMGatewayManager extends EventEmitter {
     const popoConfig = mergedConfig.popo;
 
     // Check 1: Credentials present
+    const isWebhookMode = (popoConfig?.connectionMode ?? 'websocket') === 'webhook';
     const missing: string[] = [];
     if (!popoConfig?.appKey) missing.push('appKey');
     if (!popoConfig?.appSecret) missing.push('appSecret');
-    if (!popoConfig?.token) missing.push('token');
+    if (isWebhookMode && !popoConfig?.token) missing.push('token');
     if (!popoConfig?.aesKey) missing.push('aesKey');
     if (missing.length > 0) {
       checks.push({
         code: 'missing_credentials',
         level: 'fail',
         message: `缺少必要配置项: ${missing.join(', ')}`,
-        suggestion: '请补全 appKey、appSecret、token 和 aesKey 后重新测试连通性。',
+        suggestion: isWebhookMode
+          ? '请补全 appKey、appSecret、token 和 aesKey 后重新测试连通性。'
+          : '请补全 appKey、appSecret 和 aesKey 后重新测试连通性。',
       });
       return { platform, testedAt, verdict: 'fail', checks };
     }
@@ -1508,7 +1514,7 @@ export class IMGatewayManager extends EventEmitter {
       const fields: string[] = [];
       if (!config.popo?.appKey) fields.push('appKey');
       if (!config.popo?.appSecret) fields.push('appSecret');
-      if (!config.popo?.token) fields.push('token');
+      if ((config.popo?.connectionMode ?? 'websocket') === 'webhook' && !config.popo?.token) fields.push('token');
       if (!config.popo?.aesKey) fields.push('aesKey');
       return fields;
     }
@@ -1573,8 +1579,9 @@ export class IMGatewayManager extends EventEmitter {
     }
 
     if (platform === 'popo') {
-      const { appKey, appSecret, token, aesKey } = config.popo;
-      if (!appKey || !appSecret || !token || !aesKey) {
+      const { appKey, appSecret, token, aesKey, connectionMode } = config.popo;
+      const isWebhook = (connectionMode ?? 'websocket') === 'webhook';
+      if (!appKey || !appSecret || !aesKey || (isWebhook && !token)) {
         throw new Error('配置不完整');
       }
       return 'POPO 配置已就绪，通过 OpenClaw 运行。';

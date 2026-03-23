@@ -1831,11 +1831,9 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     if (message.content?.trim()) {
       ref.setValue(message.content);
     }
-    // Restore image attachments
+    // Restore image attachments (always call to clear previous attachments)
     const imageAttachments = ((message.metadata as CoworkMessageMetadata)?.imageAttachments ?? []) as CoworkImageAttachment[];
-    if (imageAttachments.length > 0) {
-      ref.setImageAttachments(imageAttachments);
-    }
+    ref.setImageAttachments(imageAttachments);
     // Restore active skills
     const skillIds = (message.metadata as CoworkMessageMetadata)?.skillIds;
     if (skillIds && skillIds.length > 0) {

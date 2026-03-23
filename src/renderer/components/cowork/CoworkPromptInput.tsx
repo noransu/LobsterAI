@@ -140,14 +140,13 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       });
     },
     setImageAttachments: (images: CoworkImageAttachment[]) => {
-      if (images.length === 0) return;
       const newAttachments: CoworkAttachment[] = images.map((img, idx) => ({
         path: `inline:${img.name}:reedit-${Date.now()}-${idx}`,
         name: img.name,
         isImage: true,
         dataUrl: `data:${img.mimeType};base64,${img.base64Data}`,
       }));
-      setAttachments((prev) => [...prev, ...newAttachments]);
+      setAttachments(newAttachments);
     },
     focus: () => {
       textareaRef.current?.focus();

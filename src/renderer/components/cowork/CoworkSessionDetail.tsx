@@ -1,10 +1,10 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store';
 import { i18nService } from '../../services/i18n';
 import type { CoworkMessage, CoworkMessageMetadata, CoworkImageAttachment } from '../../types/cowork';
 import type { Skill } from '../../types/skill';
-import CoworkPromptInput from './CoworkPromptInput';
+import CoworkPromptInput, { type CoworkPromptInputRef } from './CoworkPromptInput';
 import MarkdownContent from '../MarkdownContent';
 import {
   CheckIcon,
@@ -25,6 +25,7 @@ import TrashIcon from '../icons/TrashIcon';
 import WindowTitleBar from '../window/WindowTitleBar';
 import { getCompactFolderName } from '../../utils/path';
 import { getScheduledReminderDisplayText } from '../../../common/scheduledReminderText';
+import { setActiveSkillIds } from '../../store/slices/skillSlice';
 
 interface CoworkSessionDetailProps {
   onManageSkills?: () => void;
@@ -892,7 +893,47 @@ const CopyButton: React.FC<{
   );
 };
 
-export const UserMessageItem: React.FC<{ message: CoworkMessage; skills: Skill[] }> = React.memo(({ message, skills }) => {
+// Re-edit button component — lets the user re-fill a sent message back into the input
+const ReEditButton: React.FC<{
+  visible: boolean;
+  onClick: () => void;
+}> = ({ visible, onClick }) => {
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className={`p-1.5 rounded-md dark:hover:bg-claude-darkSurfaceHover hover:bg-claude-surfaceHover transition-all duration-200 ${
+        visible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+      }`}
+      title={i18nService.t('coworkReEdit')}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="w-4 h-4 text-[var(--icon-secondary)]"
+        aria-hidden="true"
+      >
+        <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+        <path d="m15 5 4 4" />
+      </svg>
+    </button>
+  );
+};
+
+export const UserMessageItem: React.FC<{
+  message: CoworkMessage;
+  skills: Skill[];
+  onReEdit?: (message: CoworkMessage) => void;
+}> = React.memo(({ message, skills, onReEdit }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
 
@@ -955,6 +996,12 @@ export const UserMessageItem: React.FC<{ message: CoworkMessage; skills: Skill[]
                     </span>
                   </div>
                 ))}
+                {onReEdit && (
+                  <ReEditButton
+                    visible={isHovered}
+                    onClick={() => onReEdit(message)}
+                  />
+                )}
                 <CopyButton
                   content={message.content}
                   visible={isHovered}
@@ -1286,6 +1333,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   onNewChat,
   updateBadge,
 }) => {
+  const dispatch = useDispatch();
   const isMac = window.electron.platform === 'darwin';
   const currentSession = useSelector((state: RootState) => state.cowork.currentSession);
   const isStreaming = useSelector((state: RootState) => state.cowork.isStreaming);
@@ -1293,6 +1341,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
   const skills = useSelector((state: RootState) => state.skill.skills);
   const detailRootRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const promptInputRef = useRef<CoworkPromptInputRef>(null);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
 
   // Turn navigation states
@@ -1775,6 +1824,25 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
     return value;
   }, []);
 
+  const handleReEdit = useCallback((message: CoworkMessage) => {
+    const ref = promptInputRef.current;
+    if (!ref) return;
+    // Set text content
+    if (message.content?.trim()) {
+      ref.setValue(message.content);
+    }
+    // Restore image attachments (always call to clear previous attachments)
+    const imageAttachments = ((message.metadata as CoworkMessageMetadata)?.imageAttachments ?? []) as CoworkImageAttachment[];
+    ref.setImageAttachments(imageAttachments);
+    // Restore active skills
+    const skillIds = (message.metadata as CoworkMessageMetadata)?.skillIds;
+    if (skillIds && skillIds.length > 0) {
+      dispatch(setActiveSkillIds(skillIds));
+    }
+    // Focus the input
+    ref.focus();
+  }, [dispatch]);
+
   const messages = currentSession?.messages;
   const displayItems = useMemo(() => messages ? buildDisplayItems(messages) : [], [messages]);
   const turns = useMemo(() => buildConversationTurns(displayItems), [displayItems]);
@@ -1840,7 +1908,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
         <div key={turn.id} data-turn-index={index}>
           {turn.userMessage && (
             <div data-export-role="user-message">
-              <UserMessageItem message={turn.userMessage} skills={skills} />
+              <UserMessageItem message={turn.userMessage} skills={skills} onReEdit={handleReEdit} />
             </div>
           )}
           {showAssistantBlock && (
@@ -2094,6 +2162,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
             </div>
           ) : (
             <CoworkPromptInput
+              ref={promptInputRef}
               onSubmit={onContinue}
               onStop={onStop}
               isStreaming={isStreaming}

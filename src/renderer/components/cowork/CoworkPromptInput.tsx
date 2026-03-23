@@ -74,6 +74,8 @@ const buildInlinedSkillPrompt = (skill: Skill): string => {
 export interface CoworkPromptInputRef {
   /** 设置输入框值 */
   setValue: (value: string) => void;
+  /** 设置图片附件（用于重新编辑消息时还原图片） */
+  setImageAttachments: (images: CoworkImageAttachment[]) => void;
   /** 聚焦输入框 */
   focus: () => void;
 }
@@ -136,6 +138,15 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
           textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, minHeight), maxHeight)}px`;
         }
       });
+    },
+    setImageAttachments: (images: CoworkImageAttachment[]) => {
+      const newAttachments: CoworkAttachment[] = images.map((img, idx) => ({
+        path: `inline:${img.name}:reedit-${Date.now()}-${idx}`,
+        name: img.name,
+        isImage: true,
+        dataUrl: `data:${img.mimeType};base64,${img.base64Data}`,
+      }));
+      setAttachments(newAttachments);
     },
     focus: () => {
       textareaRef.current?.focus();

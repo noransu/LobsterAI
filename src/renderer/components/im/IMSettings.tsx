@@ -5,15 +5,16 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { SignalIcon, XMarkIcon, CheckCircleIcon, XCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import { SignalIcon, XMarkIcon, CheckCircleIcon, XCircleIcon, ExclamationTriangleIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { EyeIcon, EyeSlashIcon, XCircleIcon as XCircleIconSolid } from '@heroicons/react/20/solid';
 import { RootState } from '../../store';
 import { imService } from '../../services/im';
-import { setDingTalkConfig, setFeishuConfig, setTelegramOpenClawConfig, setQQConfig, setDiscordConfig, setNimConfig, setXiaomifengConfig, setWecomConfig, setPopoConfig, clearError } from '../../store/slices/imSlice';
+import { setDingTalkConfig, setFeishuConfig, setTelegramOpenClawConfig, setQQConfig, setDiscordConfig, setNimConfig, setXiaomifengConfig, setWecomConfig, setWeixinConfig, setPopoConfig, clearError } from '../../store/slices/imSlice';
 import { i18nService } from '../../services/i18n';
 import type { IMPlatform, IMConnectivityCheck, IMConnectivityTestResult, IMGatewayConfig, TelegramOpenClawConfig, DiscordOpenClawConfig, FeishuOpenClawConfig, DingTalkOpenClawConfig, QQOpenClawConfig, WecomOpenClawConfig, PopoOpenClawConfig } from '../../types/im';
 import { getVisibleIMPlatforms } from '../../utils/regionFilter';
 import WecomAIBotSDK from '@wecom/wecom-aibot-sdk';
+import { QRCodeSVG } from 'qrcode.react';
 import { SchemaForm } from './SchemaForm';
 import type { UiHint } from './SchemaForm';
 
@@ -49,6 +50,10 @@ const IMSettings: React.FC = () => {
   // WeCom quick setup state
   const [wecomQuickSetupStatus, setWecomQuickSetupStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
   const [wecomQuickSetupError, setWecomQuickSetupError] = useState<string>('');
+  // Weixin QR login state
+  const [weixinQrStatus, setWeixinQrStatus] = useState<'idle' | 'loading' | 'showing' | 'waiting' | 'success' | 'error'>('idle');
+  const [weixinQrUrl, setWeixinQrUrl] = useState<string>('');
+  const [weixinQrError, setWeixinQrError] = useState<string>('');
   const [localIp, setLocalIp] = useState<string>('');
   const isMountedRef = useRef(true);
 
@@ -157,6 +162,15 @@ const IMSettings: React.FC = () => {
     if (activePlatform !== 'wecom') {
       setWecomQuickSetupStatus('idle');
       setWecomQuickSetupError('');
+    }
+  }, [activePlatform]);
+
+  // Reset weixin QR login state when switching away from weixin
+  useEffect(() => {
+    if (activePlatform !== 'weixin') {
+      setWeixinQrStatus('idle');
+      setWeixinQrUrl('');
+      setWeixinQrError('');
     }
   }, [activePlatform]);
 
@@ -318,6 +332,9 @@ const IMSettings: React.FC = () => {
     await imService.persistConfig({ wecom: configToSave });
   };
 
+  // Handle Weixin OpenClaw config
+  const weixinOpenClawConfig = config.weixin;
+
   // Handle POPO OpenClaw config change
   const popoConfig = config.popo;
   const handlePopoChange = (update: Partial<PopoOpenClawConfig>) => {
@@ -370,6 +387,47 @@ const IMSettings: React.FC = () => {
   };
 
 
+  const handleWeixinQrLogin = async () => {
+    setWeixinQrStatus('loading');
+    setWeixinQrError('');
+    try {
+      const startResult = await window.electron.im.weixinQrLoginStart();
+      if (!isMountedRef.current) return;
+
+      if (!startResult.success || !startResult.qrDataUrl) {
+        setWeixinQrStatus('error');
+        setWeixinQrError(startResult.message || i18nService.t('imWeixinQrFailed'));
+        return;
+      }
+
+      setWeixinQrUrl(startResult.qrDataUrl);
+      setWeixinQrStatus('showing');
+
+      // Start polling for scan result
+      setWeixinQrStatus('waiting');
+      const waitResult = await window.electron.im.weixinQrLoginWait(startResult.sessionKey);
+      if (!isMountedRef.current) return;
+
+      if (waitResult.success && waitResult.connected) {
+        setWeixinQrStatus('success');
+        // Enable weixin and save config with accountId
+        const accountId = waitResult.accountId || '';
+        const fullConfig = { ...weixinOpenClawConfig, enabled: true, accountId };
+        dispatch(setWeixinConfig({ enabled: true, accountId }));
+        dispatch(clearError());
+        await imService.updateConfig({ weixin: fullConfig });
+        await imService.loadStatus();
+      } else {
+        setWeixinQrStatus('error');
+        setWeixinQrError(waitResult.message || i18nService.t('imWeixinQrFailed'));
+      }
+    } catch (err) {
+      if (!isMountedRef.current) return;
+      setWeixinQrStatus('error');
+      setWeixinQrError(String(err));
+    }
+  };
+
   const handleSaveConfig = async () => {
     if (!configLoaded) return;
 
@@ -400,6 +458,12 @@ const IMSettings: React.FC = () => {
     // For WeCom, save wecom config directly (OpenClaw mode)
     if (activePlatform === 'wecom') {
       await imService.persistConfig({ wecom: wecomOpenClawConfig });
+      return;
+    }
+
+    // For Weixin, save weixin config directly (OpenClaw mode)
+    if (activePlatform === 'weixin') {
+      await imService.persistConfig({ weixin: weixinOpenClawConfig });
       return;
     }
 
@@ -533,6 +597,17 @@ const IMSettings: React.FC = () => {
         return;
       }
 
+      if (platform === 'weixin') {
+        const newEnabled = !weixinOpenClawConfig.enabled;
+        const success = await imService.updateConfig({ weixin: { ...weixinOpenClawConfig, enabled: newEnabled } });
+        if (success) {
+          dispatch(setWeixinConfig({ enabled: newEnabled }));
+          if (newEnabled) dispatch(clearError());
+          await imService.loadStatus();
+        }
+        return;
+      }
+
       if (platform === 'popo') {
         const newEnabled = !popoConfig.enabled;
         const success = await imService.updateConfig({ popo: { ...popoConfig, enabled: newEnabled } });
@@ -594,6 +669,7 @@ const IMSettings: React.FC = () => {
   const xiaomifengConnected = status.xiaomifeng?.connected ?? false;
   const qqConnected = status.qq?.connected ?? false;
   const wecomConnected = status.wecom?.connected ?? false;
+  const weixinConnected = status.weixin?.connected ?? false;
   const popoConnected = status.popo?.connected ?? false;
 
   // Compute visible platforms based on language
@@ -632,6 +708,9 @@ const IMSettings: React.FC = () => {
     if (platform === 'wecom') {
       return !!(wecomOpenClawConfig.botId && wecomOpenClawConfig.secret);
     }
+    if (platform === 'weixin') {
+      return true; // No credentials needed, connects via QR code in CLI
+    }
     if (platform === 'popo') {
       const effectiveMode = config.popo.connectionMode || (config.popo.token ? 'webhook' : 'websocket');
       if (effectiveMode === 'webhook') {
@@ -656,6 +735,7 @@ const IMSettings: React.FC = () => {
     if (platform === 'xiaomifeng') return xiaomifengConnected;
     if (platform === 'qq') return qqConnected;
     if (platform === 'wecom') return wecomConnected;
+    if (platform === 'weixin') return weixinConnected;
     if (platform === 'popo') return popoConnected;
     return feishuConnected;
   };
@@ -710,6 +790,21 @@ const IMSettings: React.FC = () => {
         wecom: wecomOpenClawConfig,
       } as Partial<IMGatewayConfig>);
       if (!wecomOpenClawConfig.enabled && result) {
+        const authCheck = result.checks.find((c) => c.code === 'auth_check');
+        if (authCheck && authCheck.level === 'pass') {
+          toggleGateway(platform);
+        }
+      }
+      return;
+    }
+
+    // For Weixin, persist weixin config and test (OpenClaw mode)
+    if (platform === 'weixin') {
+      await imService.persistConfig({ weixin: weixinOpenClawConfig });
+      const result = await runConnectivityTest(platform, {
+        weixin: weixinOpenClawConfig,
+      } as Partial<IMGatewayConfig>);
+      if (!weixinOpenClawConfig.enabled && result) {
         const authCheck = result.checks.find((c) => c.code === 'auth_check');
         if (authCheck && authCheck.level === 'pass') {
           toggleGateway(platform);
@@ -793,6 +888,7 @@ const IMSettings: React.FC = () => {
       nim: setNimConfig,
       xiaomifeng: setXiaomifengConfig,
       wecom: setWecomConfig,
+      weixin: setWeixinConfig,
       popo: setPopoConfig,
     };
     return actionMap[platform];
@@ -1459,6 +1555,90 @@ const IMSettings: React.FC = () => {
             {status.xiaomifeng?.lastError && (
               <div className="text-xs text-red-500 bg-red-500/10 px-3 py-2 rounded-lg">
                 {translateIMError(status.xiaomifeng.lastError)}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Weixin (微信) Settings */}
+        {activePlatform === 'weixin' && (
+          <div className="space-y-3">
+            {/* Scan QR code section */}
+            <div className="rounded-lg border border-dashed dark:border-claude-darkBorder/60 border-claude-border/60 p-4 text-center space-y-3">
+              {(weixinQrStatus === 'idle' || weixinQrStatus === 'error') && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void handleWeixinQrLogin()}
+                    className="px-4 py-2.5 rounded-lg text-sm font-medium bg-claude-accent text-white hover:bg-claude-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {i18nService.t('imWeixinScanBtn')}
+                  </button>
+                  <p className="text-xs text-claude-textSecondary dark:text-claude-darkTextSecondary">
+                    {i18nService.t('imWeixinScanHint')}
+                  </p>
+                  {weixinQrStatus === 'error' && weixinQrError && (
+                    <div className="flex items-center justify-center gap-1.5 text-xs text-red-500 bg-red-500/10 px-3 py-2 rounded-lg">
+                      <XCircleIcon className="h-4 w-4 flex-shrink-0" />
+                      {weixinQrError}
+                    </div>
+                  )}
+                </>
+              )}
+              {weixinQrStatus === 'loading' && (
+                <div className="flex items-center justify-center gap-2 py-4">
+                  <ArrowPathIcon className="h-5 w-5 animate-spin text-claude-accent" />
+                  <span className="text-sm text-claude-textSecondary dark:text-claude-darkTextSecondary">
+                    {i18nService.t('imWeixinQrLoading')}
+                  </span>
+                </div>
+              )}
+              {(weixinQrStatus === 'showing' || weixinQrStatus === 'waiting') && weixinQrUrl && (
+                <div className="space-y-3">
+                  <p className="text-sm font-medium dark:text-claude-darkText text-claude-text">
+                    {i18nService.t('imWeixinQrScanPrompt')}
+                  </p>
+                  <div className="flex justify-center">
+                    <div className="p-3 bg-white rounded-lg border dark:border-claude-darkBorder/40 border-claude-border/40">
+                      <QRCodeSVG value={weixinQrUrl} size={192} />
+                    </div>
+                  </div>
+                </div>
+              )}
+              {weixinQrStatus === 'success' && (
+                <div className="flex items-center justify-center gap-1.5 text-xs text-green-600 dark:text-green-400 bg-green-500/10 px-3 py-2 rounded-lg">
+                  <CheckCircleIcon className="h-4 w-4 flex-shrink-0" />
+                  {i18nService.t('imWeixinQrSuccess')}
+                </div>
+              )}
+            </div>
+
+            {/* Platform Guide */}
+            <PlatformGuide
+              steps={[
+                i18nService.t('imWeixinGuideStep1'),
+                i18nService.t('imWeixinGuideStep2'),
+                i18nService.t('imWeixinGuideStep3'),
+              ]}
+              guideUrl={IM_GUIDE_URLS.weixin}
+            />
+
+            {/* Connectivity test */}
+            <div className="pt-1">
+              {renderConnectivityTestButton('weixin')}
+            </div>
+
+            {/* Account ID display */}
+            {weixinOpenClawConfig.accountId && (
+              <div className="text-xs text-green-600 dark:text-green-400 bg-green-500/10 px-3 py-2 rounded-lg">
+                Account ID: {weixinOpenClawConfig.accountId}
+              </div>
+            )}
+
+            {/* Error display */}
+            {status.weixin?.lastError && (
+              <div className="text-xs text-red-500 bg-red-500/10 px-3 py-2 rounded-lg">
+                {status.weixin.lastError}
               </div>
             )}
           </div>

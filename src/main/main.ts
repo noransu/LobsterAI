@@ -530,6 +530,13 @@ const getOpenClawConfigSync = (): OpenClawConfigSync => {
           return null;
         }
       },
+      getWeixinConfig: () => {
+        try {
+          return getIMGatewayManager().getConfig().weixin;
+        } catch {
+          return null;
+        }
+      },
       getDiscordOpenClawConfig: () => {
         try {
           return getIMGatewayManager()?.getConfig()?.discord ?? null;

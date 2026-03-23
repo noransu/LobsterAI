@@ -16,6 +16,7 @@ export const platformLogos: Record<IMPlatform, string> = {
   discord: 'discord.svg',
   nim: 'nim.png',
   xiaomifeng: 'xiaomifeng.png',
+  weixin: 'weixin.png',
   wecom: 'wecom.png',
   popo: 'popo.png',
 };
@@ -27,6 +28,7 @@ export const IM_GUIDE_URLS: Partial<Record<IMPlatform, string>> = {
   qq: 'https://lobsterai.youdao.com/#/docs/lobsterai_im_bot_config_guide/qqqq-bot',
   telegram: 'https://lobsterai.youdao.com/#/en/docs/lobsterai_im_bot_config_guide/telegram-bot-configuration',
   discord: 'https://lobsterai.youdao.com/#/en/docs/lobsterai_im_bot_config_guide/discord-bot-configuration',
+  weixin: '',
   popo: '',
 };
 

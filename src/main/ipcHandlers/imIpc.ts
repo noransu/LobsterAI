@@ -75,7 +75,7 @@ export function registerImIpcHandlers(ctx: IpcContext): void {
       ctx.getIMGatewayManager().setConfig(config, { syncGateway: options?.syncGateway });
 
       const hasOpenClawChange = config.telegram || config.discord || config.dingtalk
-        || config.feishu || config.qq || config.wecom || config.popo;
+        || config.feishu || config.qq || config.wecom || config.popo || config.weixin;
       if (options?.syncGateway && hasOpenClawChange && ctx.getOpenClawEngineManager().getStatus().phase === 'running') {
         scheduleImConfigSync();
       }
@@ -237,6 +237,30 @@ export function registerImIpcHandlers(ctx: IpcContext): void {
       return await ctx.getIMGatewayManager().verifyFeishuCredentials(appId, appSecret);
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : '验证失败' };
+    }
+  });
+
+  // ==================== Weixin QR Login ====================
+
+  ipcMain.handle('im:weixin:qr-login-start', async () => {
+    try {
+      const result = await ctx.getIMGatewayManager().weixinQrLoginStart();
+      return { success: true, ...result };
+    } catch (error) {
+      return { success: false, message: error instanceof Error ? error.message : 'Failed to start Weixin QR login' };
+    }
+  });
+
+  ipcMain.handle('im:weixin:qr-login-wait', async (_event, accountId?: string) => {
+    try {
+      const result = await ctx.getIMGatewayManager().weixinQrLoginWait(accountId);
+      if (result.connected) {
+        console.log('[IMGatewayManager] Weixin login succeeded, restarting OpenClaw gateway');
+        await ctx.getOpenClawEngineManager().restartGateway();
+      }
+      return { success: true, ...result };
+    } catch (error) {
+      return { success: false, connected: false, message: error instanceof Error ? error.message : 'Weixin QR login failed' };
     }
   });
 }

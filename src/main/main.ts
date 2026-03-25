@@ -4155,6 +4155,11 @@ if (!gotTheLock) {
     if (cronJobService) {
       cronJobService.stopPolling();
     }
+
+    // Flush any pending SQLite writes to disk before exit
+    if (store) {
+      store.flushSync();
+    }
   };
 
   app.on('before-quit', (e) => {

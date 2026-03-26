@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session, nativeTheme, dialog, shell, nativeImage, systemPreferences, Menu, protocol, net, powerMonitor } from 'electron';
+import { app, BrowserWindow, ipcMain, session, nativeTheme, dialog, shell, nativeImage, systemPreferences, Menu, protocol, net, powerMonitor, powerSaveBlocker } from 'electron';
 import type { WebContents } from 'electron';
 import path from 'path';
 import fs from 'fs';
@@ -14,10 +14,11 @@ import {
 } from './libs/agentEngine';
 import { SkillManager } from './skillManager';
 import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
-import { getCurrentApiConfig, resolveCurrentApiConfig, setStoreGetter } from './libs/claudeSettings';
+import { getCurrentApiConfig, resolveCurrentApiConfig, setStoreGetter, setAuthTokensGetter, setServerBaseUrlGetter } from './libs/claudeSettings';
+import { getServerApiBaseUrl, refreshEndpointsTestMode } from './libs/endpoints';
 import { saveCoworkApiConfig } from './libs/coworkConfigStore';
 import { generateSessionTitle, probeCoworkModelReadiness } from './libs/coworkUtil';
-import { startCoworkOpenAICompatProxy, stopCoworkOpenAICompatProxy } from './libs/coworkOpenAICompatProxy';
+import { startCoworkOpenAICompatProxy, stopCoworkOpenAICompatProxy, setProxyTokenRefresher } from './libs/coworkOpenAICompatProxy';
 import { OpenClawEngineManager, type OpenClawEngineStatus } from './libs/openclawEngineManager';
 import {
   listPairingRequests,
@@ -57,6 +58,9 @@ import {
   registerOpenClawIpcHandlers,
   registerScheduledTaskIpcHandlers,
   registerImIpcHandlers,
+  registerAuthIpcHandlers,
+  getAuthTokens,
+  saveAuthTokens,
 } from './ipcHandlers';
 import {
   truncateIpcString,
@@ -64,7 +68,7 @@ import {
   sanitizePermissionRequestForIpc,
   IPC_UPDATE_CONTENT_MAX_CHARS,
 } from './ipcHandlers/ipcUtils';
-import { setLanguage } from './i18n';
+import { setLanguage, t } from './i18n';
 import { isAutoLaunched, getAutoLaunchEnabled, setAutoLaunchEnabled } from './autoLaunchManager';
 import { McpStore } from './mcpStore';
 import { CronJobService } from './libs/cronJobService';
@@ -755,6 +759,19 @@ const bindCoworkRuntimeForwarder = (): void => {
       if (win.isDestroyed()) return;
       win.webContents.send('cowork:stream:complete', { sessionId, claudeSessionId });
     });
+    // If session used a server model, notify renderer to refresh quota
+    try {
+      const apiConfig = resolveCurrentApiConfig();
+      if (apiConfig.providerMetadata?.providerName === 'lobsterai-server') {
+        const wins = BrowserWindow.getAllWindows();
+        wins.forEach((win) => {
+          if (win.isDestroyed()) return;
+          win.webContents.send('auth:quotaChanged');
+        });
+      }
+    } catch {
+      // ignore
+    }
   });
 
   runtime.on('error', (sessionId: string, error: string) => {
@@ -1298,9 +1315,49 @@ const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
 } else {
+  // Register custom protocol for OAuth callback
+  app.setAsDefaultProtocolClient('lobsterai');
+
+  // Buffer for deep link auth code received before renderer is ready
+  let pendingAuthCode: string | null = null;
+
+  /**
+   * Parse a lobsterai:// deep link and send (or buffer) the auth code.
+   */
+  const handleDeepLink = (url: string) => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.hostname === 'auth' && parsed.pathname === '/callback') {
+        const code = parsed.searchParams.get('code');
+        if (code) {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('auth:callback', { code });
+          } else {
+            pendingAuthCode = code;
+          }
+        }
+      }
+    } catch (e) {
+      console.error('[Main] Failed to parse deep link:', e);
+    }
+  };
+
+  // macOS: handle open-url event for deep links
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    handleDeepLink(url);
+  });
+
   app.on('second-instance', (_event, commandLine, workingDirectory) => {
-    console.log('[Main] second-instance event', { commandLine, workingDirectory });
-    // 如果尝试启动第二个实例，则聚焦到主窗口
+    console.debug('[Main] second-instance event', { commandLine, workingDirectory });
+
+    // Check for deep link in command line args (Windows/Linux)
+    const deepLink = commandLine.find(arg => arg.startsWith('lobsterai://'));
+    if (deepLink) {
+      handleDeepLink(deepLink);
+    }
+
+    // Focus main window
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       if (!mainWindow.isVisible()) mainWindow.show();
@@ -1344,6 +1401,11 @@ if (!gotTheLock) {
   registerOpenClawIpcHandlers(ipcContext);
   registerScheduledTaskIpcHandlers(ipcContext);
   registerImIpcHandlers(ipcContext);
+  registerAuthIpcHandlers(
+    ipcContext,
+    () => pendingAuthCode,
+    () => { pendingAuthCode = null; },
+  );
 
   const WECOM_AUTH_HOSTNAMES = new Set([
     'work.weixin.qq.com',
@@ -1742,6 +1804,80 @@ if (!gotTheLock) {
     }
     // Inject store getter into claudeSettings
     setStoreGetter(() => store);
+    // Apply test-mode endpoint overrides from store config
+    refreshEndpointsTestMode(store);
+    // Inject auth getters for lobsterai-server provider routing.
+    // The getter proactively triggers a background token refresh when the
+    // accessToken is within 5 minutes of expiry, so the SDK always gets
+    // a fresh token without blocking.
+    let refreshPromise: Promise<void> | null = null;
+    const refreshTokenAsync = async () => {
+      if (refreshPromise) return;
+      refreshPromise = (async () => {
+        try {
+          const tokens = getAuthTokens(() => store);
+          if (!tokens?.refreshToken) return;
+          const serverBaseUrl = getServerApiBaseUrl();
+          const resp = await net.fetch(`${serverBaseUrl}/api/auth/refresh`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken: tokens.refreshToken }),
+          });
+          if (resp.ok) {
+            const body = await resp.json() as { code: number; data: { accessToken: string; refreshToken?: string } };
+            if (body.code === 0 && body.data) {
+              saveAuthTokens(() => store, body.data.accessToken, body.data.refreshToken || tokens.refreshToken);
+              console.log('[Auth] proactive token refresh succeeded');
+            }
+          }
+        } catch (err) {
+          console.warn('[Auth] proactive token refresh failed:', err);
+        } finally {
+          refreshPromise = null;
+        }
+      })();
+    };
+
+    setAuthTokensGetter(() => {
+      const tokens = getAuthTokens(() => store);
+      if (!tokens) return null;
+      // Check if accessToken is close to expiry and trigger background refresh
+      try {
+        const payload = JSON.parse(Buffer.from(tokens.accessToken.split('.')[1], 'base64').toString());
+        const expiresAt = payload.exp * 1000;
+        if (expiresAt - Date.now() < 5 * 60 * 1000) {
+          refreshTokenAsync(); // fire-and-forget
+        }
+      } catch { /* unable to parse JWT, return token as-is */ }
+      return tokens;
+    });
+    setServerBaseUrlGetter(() => getServerApiBaseUrl());
+
+    // Wire up token refresher for the OpenAI compat proxy so it can retry
+    // on 401/403 with a fresh accessToken instead of failing immediately.
+    setProxyTokenRefresher(async () => {
+      const tokens = getAuthTokens(() => store);
+      if (!tokens?.refreshToken) return null;
+      const serverBaseUrl = getServerApiBaseUrl();
+      try {
+        const resp = await net.fetch(`${serverBaseUrl}/api/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken: tokens.refreshToken }),
+        });
+        if (resp.ok) {
+          const body = await resp.json() as { code: number; data: { accessToken: string; refreshToken?: string } };
+          if (body.code === 0 && body.data) {
+            saveAuthTokens(() => store, body.data.accessToken, body.data.refreshToken || tokens.refreshToken);
+            console.log('[Auth] proxy token refresh succeeded');
+            return body.data.accessToken;
+          }
+        }
+      } catch (err) {
+        console.warn('[Auth] proxy token refresh failed:', err);
+      }
+      return null;
+    });
 
     bindCoworkRuntimeForwarder();
     bindOpenClawStatusForwarder();

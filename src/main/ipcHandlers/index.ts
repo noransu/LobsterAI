@@ -9,3 +9,4 @@ export { registerMcpIpcHandlers } from './mcpIpc';
 export { registerOpenClawIpcHandlers } from './openclawIpc';
 export { registerScheduledTaskIpcHandlers } from './scheduledTaskIpc';
 export { registerImIpcHandlers } from './imIpc';
+export { registerAuthIpcHandlers, saveAuthTokens, getAuthTokens, clearAuthTokens, fetchWithAuth } from './authIpc';

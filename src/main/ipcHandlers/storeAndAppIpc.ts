@@ -23,6 +23,7 @@ import { getCoworkLogPath } from '../libs/coworkLogger';
 import { exportLogsZip } from '../libs/logExport';
 import { getAutoLaunchEnabled, setAutoLaunchEnabled } from '../autoLaunchManager';
 import { getCurrentApiConfig, resolveCurrentApiConfig } from '../libs/claudeSettings';
+import { refreshEndpointsTestMode } from '../libs/endpoints';
 import { saveCoworkApiConfig } from '../libs/coworkConfigStore';
 import { generateSessionTitle, probeCoworkModelReadiness } from '../libs/coworkUtil';
 import { downloadUpdate, installUpdate, cancelActiveDownload } from '../libs/appUpdateInstaller';
@@ -59,6 +60,7 @@ export function registerStoreAndAppIpcHandlers(
   ipcMain.handle('store:set', async (_event, key, value) => {
     ctx.getStore().set(key, value);
     if (key === 'app_config') {
+      refreshEndpointsTestMode(ctx.getStore());
       const syncResult = await ctx.syncOpenClawConfig({
         reason: 'app-config-change',
         restartGatewayIfRunning: false,

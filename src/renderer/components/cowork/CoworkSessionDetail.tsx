@@ -23,6 +23,7 @@ import EllipsisHorizontalIcon from '../icons/EllipsisHorizontalIcon';
 import PencilSquareIcon from '../icons/PencilSquareIcon';
 import TrashIcon from '../icons/TrashIcon';
 import WindowTitleBar from '../window/WindowTitleBar';
+import Tooltip from '../ui/Tooltip';
 import { getCompactFolderName } from '../../utils/path';
 import { getScheduledReminderDisplayText } from '../../../common/scheduledReminderText';
 import Mark from 'mark.js';
@@ -2189,17 +2190,18 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
           ) : (
             <>
               {/* Search icon button (collapsed) */}
-              <button
-                type="button"
-                onClick={openSearch}
-                className="p-1.5 rounded-lg dark:text-claude-darkTextSecondary text-claude-textSecondary dark:hover:bg-claude-darkSurfaceHover hover:bg-claude-surfaceHover transition-colors"
-                aria-label={i18nService.t(isMac ? 'coworkSearchOpenMac' : 'coworkSearchOpenWin')}
-                title={i18nService.t(isMac ? 'coworkSearchOpenMac' : 'coworkSearchOpenWin')}
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-                </svg>
-              </button>
+              <Tooltip content={i18nService.t(isMac ? 'coworkSearchOpenMac' : 'coworkSearchOpenWin')} position="bottom">
+                <button
+                  type="button"
+                  onClick={openSearch}
+                  className="p-1.5 rounded-lg dark:text-claude-darkTextSecondary text-claude-textSecondary dark:hover:bg-claude-darkSurfaceHover hover:bg-claude-surfaceHover transition-colors"
+                  aria-label={i18nService.t(isMac ? 'coworkSearchOpenMac' : 'coworkSearchOpenWin')}
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
+                  </svg>
+                </button>
+              </Tooltip>
 
               {/* Folder button */}
               <button

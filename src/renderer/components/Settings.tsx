@@ -2336,7 +2336,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, onUpda
                       className={`flex flex-col items-center rounded-xl border-2 p-2 transition-colors cursor-pointer ${
                         isSelected
                           ? 'border-primary bg-primary-muted'
-                          : 'border-transparent hover:border-primary/40'
+                          : 'border-transparent hover:border-border'
                       }`}
                       style={{
                         borderColor: isSelected ? 'var(--lobster-primary)' : undefined,
@@ -2564,8 +2564,8 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, onUpda
                     onClick={() => handleProviderChange(providerKey)}
                     className={`group flex items-center p-2 rounded-xl cursor-pointer transition-colors ${
                       activeProvider === provider
-                        ? 'bg-primary/10 dark:bg-primary/20 border border-primary/30 shadow-subtle'
-                        : 'bg-surface/50 bg-surface hover:bg-surface-raised border border-transparent'
+                        ? 'bg-primary-muted border border-primary shadow-subtle'
+                        : 'bg-surface hover:bg-surface-raised border border-transparent'
                     }`}
                   >
                     <div className="flex flex-1 items-center min-w-0">
@@ -2608,7 +2608,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, onUpda
                       <div
                         title={!canToggleProvider ? i18nService.t('configureApiKey') : undefined}
                         className={`w-7 h-4 rounded-full flex items-center transition-colors ${
-                          config.enabled ? 'bg-primary' : 'bg-border'
+                          config.enabled ? 'bg-primary' : 'bg-gray-400 dark:bg-gray-600'
                         } ${
                           canToggleProvider ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'
                         }`}
@@ -2777,7 +2777,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, onUpda
                           <button
                             type="button"
                             onClick={() => handleMiniMaxDeviceLogin(minimaxOAuthRegion)}
-                            className="w-full py-2 text-xs font-medium rounded-xl bg-primary text-white hover:bg-primary/90 transition-colors"
+                            className="w-full py-2 text-xs font-medium rounded-xl bg-primary text-white hover:bg-primary-hover transition-colors"
                           >
                             {i18nService.t('minimaxOAuthLogin')}
                           </button>
@@ -2852,7 +2852,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, onUpda
                             <button
                               type="button"
                               onClick={() => handleMiniMaxDeviceLogin(minimaxOAuthRegion)}
-                              className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors"
+                              className="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-primary text-white hover:bg-primary-hover transition-colors"
                             >
                               {i18nService.t('minimaxOAuthRelogin')}
                             </button>
@@ -2981,7 +2981,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, onUpda
                 )}
                 {/* GLM Coding Plan 提示 */}
                 {activeProvider === 'zhipu' && providers.zhipu.codingPlanEnabled && (
-                  <div className="mt-1.5 p-2 rounded-lg bg-primary/10 border border-primary/20">
+                  <div className="mt-1.5 p-2 rounded-lg bg-primary-muted border border-primary-muted">
                     <p className="text-[11px] text-primary dark:text-primary">
                       <span className="font-medium">GLM Coding Plan:</span> {i18nService.t('zhipuCodingPlanEndpointHint')}
                     </p>
@@ -2989,7 +2989,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, onUpda
                 )}
                 {/* Qwen Coding Plan 提示 */}
                 {activeProvider === 'qwen' && providers.qwen.codingPlanEnabled && (
-                  <div className="mt-1.5 p-2 rounded-lg bg-primary/10 border border-primary/20">
+                  <div className="mt-1.5 p-2 rounded-lg bg-primary-muted border border-primary-muted">
                     <p className="text-[11px] text-primary dark:text-primary">
                       <span className="font-medium">Coding Plan:</span> {i18nService.t('qwenCodingPlanEndpointHint')}
                     </p>
@@ -2997,7 +2997,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, onUpda
                 )}
                 {/* Volcengine Coding Plan 提示 */}
                 {activeProvider === 'volcengine' && providers.volcengine.codingPlanEnabled && (
-                  <div className="mt-1.5 p-2 rounded-lg bg-primary/10 border border-primary/20">
+                  <div className="mt-1.5 p-2 rounded-lg bg-primary-muted border border-primary-muted">
                     <p className="text-[11px] text-primary dark:text-primary">
                       <span className="font-medium">Coding Plan:</span> {i18nService.t('volcengineCodingPlanEndpointHint')}
                     </p>
@@ -3005,7 +3005,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, onUpda
                 )}
                 {/* Moonshot Coding Plan 提示 */}
                 {activeProvider === 'moonshot' && providers.moonshot.codingPlanEnabled && (
-                  <div className="mt-1.5 p-2 rounded-lg bg-primary/10 border border-primary/20">
+                  <div className="mt-1.5 p-2 rounded-lg bg-primary-muted border border-primary-muted">
                     <p className="text-[11px] text-primary dark:text-primary">
                       <span className="font-medium">Coding Plan:</span> {i18nService.t('moonshotCodingPlanEndpointHint')}
                     </p>
@@ -3056,13 +3056,13 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, onUpda
 
               {/* GLM Coding Plan 开关 (仅 Zhipu) */}
               {activeProvider === 'zhipu' && (
-                <div className="flex items-center justify-between p-3 rounded-xl/50 bg-surface/50 border border-border">
+                <div className="flex items-center justify-between p-3 rounded-xl bg-surface border border-border">
                   <div className="flex-1">
                     <div className="flex items-center space-x-2">
                       <span className="text-xs font-medium text-foreground">
                         GLM Coding Plan
                       </span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-primary/10 text-primary">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-primary-muted text-primary">
                         Beta
                       </span>
                     </div>
@@ -3084,13 +3084,13 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, onUpda
 
               {/* Qwen Coding Plan 开关 (仅 Qwen) */}
               {activeProvider === 'qwen' && (
-                <div className="flex items-center justify-between p-3 rounded-xl/50 bg-surface/50 border border-border">
+                <div className="flex items-center justify-between p-3 rounded-xl bg-surface border border-border">
                   <div className="flex-1">
                     <div className="flex items-center space-x-2">
                       <span className="text-xs font-medium text-foreground">
                         Coding Plan
                       </span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-primary/10 text-primary">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-primary-muted text-primary">
                         订阅套餐
                       </span>
                     </div>
@@ -3112,13 +3112,13 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, onUpda
 
               {/* Volcengine Coding Plan 开关 (仅 Volcengine) */}
               {activeProvider === 'volcengine' && (
-                <div className="flex items-center justify-between p-3 rounded-xl/50 bg-surface/50 border border-border">
+                <div className="flex items-center justify-between p-3 rounded-xl bg-surface border border-border">
                   <div className="flex-1">
                     <div className="flex items-center space-x-2">
                       <span className="text-xs font-medium text-foreground">
                         Coding Plan
                       </span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-primary/10 text-primary">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-primary-muted text-primary">
                         Beta
                       </span>
                     </div>
@@ -3140,13 +3140,13 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, onUpda
 
               {/* Moonshot Coding Plan 开关 (仅 Moonshot) */}
               {activeProvider === 'moonshot' && (
-                <div className="flex items-center justify-between p-3 rounded-xl/50 bg-surface/50 border border-border">
+                <div className="flex items-center justify-between p-3 rounded-xl bg-surface border border-border">
                   <div className="flex-1">
                     <div className="flex items-center space-x-2">
                       <span className="text-xs font-medium text-foreground">
                         Coding Plan
                       </span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-primary/10 text-primary">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-primary-muted text-primary">
                         Beta
                       </span>
                     </div>
@@ -3201,7 +3201,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, onUpda
                   {(providers[activeProvider].models ?? []).map(model => (
                     <div
                       key={model.id}
-                      className="bg-surface/50 p-2 rounded-xl border-border border transition-colors hover:border-primary group"
+                      className="bg-surface p-2 rounded-xl border-border border transition-colors hover:border-primary group"
                     >
                       <div className="flex items-center justify-between gap-2 min-w-0">
                         <div className="flex items-center gap-1.5 min-w-0 flex-1">
@@ -3213,7 +3213,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, onUpda
                         </div>
                         <div className="flex items-center shrink-0 space-x-1">
                           {model.supportsImage && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-primary/10 text-primary">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-primary-muted text-primary">
                               {i18nService.t('imageInput')}
                             </span>
                           )}
@@ -3237,7 +3237,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, onUpda
                   ))}
 
                   {(!providers[activeProvider].models || providers[activeProvider].models.length === 0) && (
-                    <div className="bg-surface/20 p-2.5 rounded-xl border border-border/50 text-center">
+                    <div className="bg-surface p-2.5 rounded-xl border border-border-subtle text-center">
                       <p className="text-[11px] text-secondary">{i18nService.t('noModelsAvailable')}</p>
                       <button
                         type="button"
@@ -3512,7 +3512,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, onUpda
                 onClick={() => handleTabChange(tab.key)}
                 className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left ${
                   activeTab === tab.key
-                    ? 'bg-primary/10 text-primary'
+                    ? 'bg-primary-muted text-primary'
                     : 'text-secondary hover:text-foreground hover:bg-surface-raised'
                 }`}
               >

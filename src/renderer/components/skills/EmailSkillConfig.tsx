@@ -337,7 +337,7 @@ const EmailSkillConfig: React.FC<EmailSkillConfigProps> = ({ onClose }) => {
   }
 
   return (
-    <div className="space-y-4 p-4 rounded-xl border border-border/30 bg-surface/30">
+    <div className="space-y-4 p-4 rounded-xl border border-border-subtle bg-surface">
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-medium text-foreground">
           {i18nService.t('emailConfig')}
@@ -676,7 +676,7 @@ const EmailSkillConfig: React.FC<EmailSkillConfigProps> = ({ onClose }) => {
                 return (
                   <div
                     key={check.code}
-                    className="rounded-lg border border-border/60 px-2.5 py-2 bg-surface/70"
+                    className="rounded-lg border border-border-subtle px-2.5 py-2 bg-surface"
                   >
                     <div className={`flex items-center gap-1 text-xs font-medium ${checkPassed ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                       {checkPassed ? (

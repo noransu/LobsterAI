@@ -89,7 +89,11 @@ const AgentCreateModal: React.FC<AgentCreateModalProps> = ({ isOpen, onClose }) 
         agentService.switchAgent(agent.id);
         onClose();
         resetForm();
+      } else {
+        window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('agentCreateFailed') }));
       }
+    } catch {
+      window.dispatchEvent(new CustomEvent('app:showToast', { detail: i18nService.t('agentCreateFailed') }));
     } finally {
       setCreating(false);
     }

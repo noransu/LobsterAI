@@ -6,7 +6,6 @@ import PaperClipIcon from '../icons/PaperClipIcon';
 import XMarkIcon from '../icons/XMarkIcon';
 import ModelSelector from '../ModelSelector';
 import type { Model } from '../../store/slices/modelSlice';
-import Tooltip from '../ui/Tooltip';
 import FolderSelectorPopover from './FolderSelectorPopover';
 import { SkillsButton, ActiveSkillBadge } from '../skills';
 import { i18nService } from '../../services/i18n';
@@ -684,11 +683,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
               <div className="flex items-center gap-2 relative">
                 {showFolderSelector && (
                   <>
-                    <Tooltip
-                      content={truncatePath(workingDirectory, 120)}
-                      disabled={showFolderMenu || !workingDirectory}
-                      maxWidth="min(400px, 90vw)"
-                    >
                       <div className="flex items-center">
                         <button
                           ref={folderButtonRef as React.RefObject<HTMLButtonElement>}
@@ -719,7 +713,6 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
                           )}
                         </button>
                       </div>
-                    </Tooltip>
                     <FolderSelectorPopover
                       isOpen={showFolderMenu}
                       onClose={() => setShowFolderMenu(false)}

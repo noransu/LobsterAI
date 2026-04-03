@@ -21,6 +21,7 @@ import { RootState } from '../../store';
 import { Skill, MarketplaceSkill, MarketTag } from '../../types/skill';
 import ErrorMessage from '../ErrorMessage';
 import SkillSecurityReport from './SkillSecurityReport';
+import SkillTooltip from './SkillTooltip';
 
 type SkillTab = 'installed' | 'marketplace';
 
@@ -579,9 +580,16 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly }) => {
             {i18nService.t('noSkillsAvailable')}
           </div>
         ) : (
-          filteredSkills.map((skill) => (
-            <div
+          filteredSkills.map((skill, index) => (
+            <SkillTooltip
               key={skill.id}
+              skillName={skill.name}
+              description={skillService.getLocalizedSkillDescription(skill.id, skill.name, skill.description)}
+              isOfficial={skill.isOfficial}
+              preferredPlacement={index % 2 === 0 ? 'right' : 'left'}
+              delay={300}
+            >
+            <div
               className="rounded-xl border border-border bg-surface p-3 transition-colors hover:border-primary cursor-pointer"
               onClick={() => setSelectedSkill(skill)}
             >
@@ -665,6 +673,7 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly }) => {
                 })()}
               </div>
             </div>
+            </SkillTooltip>
           ))
         )}
       </div>
@@ -713,9 +722,16 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly }) => {
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-3">
-                {filteredMarketplaceSkills.map((skill) => (
-              <div
+                {filteredMarketplaceSkills.map((skill, index) => (
+              <SkillTooltip
                 key={skill.id}
+                skillName={resolveLocalizedText(skill.name)}
+                description={resolveLocalizedText(skill.description)}
+                isOfficial={skill.source?.from === 'official'}
+                preferredPlacement={index % 2 === 0 ? 'right' : 'left'}
+                delay={300}
+              >
+              <div
                 className="rounded-xl border border-border bg-surface p-3 transition-colors hover:border-primary cursor-pointer"
                 onClick={() => setSelectedMarketplaceSkill(skill)}
               >
@@ -801,6 +817,7 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly }) => {
                   )}
                 </div>
               </div>
+              </SkillTooltip>
             ))}
           </div>
             )}
